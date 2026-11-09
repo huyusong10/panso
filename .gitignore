@@ -4,4 +4,5 @@ node_modules/
 npm-debug.log*
 .env
 .env.*
-data/config.json
+data/*.json
+data/*.tmp*

@@ -21,31 +21,40 @@ import {
 const XIAOKUPAN_DEFAULT_FN = 'ffb7ba806a267ced7478dc27716e79ea729a98a801af2ac9c3647bdaca91af78';
 let cachedXiaokupanFn = '';
 let cachedXiaokupanExp = 0;
+let inflightXiaokupanFn = null;
 
 async function getXiaokupanFnId(timeoutMs = 3500) {
   if (cachedXiaokupanFn && Date.now() < cachedXiaokupanExp) {
     return cachedXiaokupanFn;
   }
-  try {
-    const html = await fetchText('https://xiaokupan.com/', { timeoutMs });
-    const assetMatch = html.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/);
-    if (assetMatch) {
-      const js = await fetchText(`https://xiaokupan.com${assetMatch[0]}`, { timeoutMs });
-      const routeIdx = js.indexOf('"/s/$query"');
-      const segment = routeIdx >= 0 ? js.slice(Math.max(0, routeIdx - 1500), routeIdx + 500) : js;
-      const fnMatch = segment.match(/createServerRpc\("([a-f0-9]{64})"\)/);
-      if (fnMatch?.[1]) {
-        cachedXiaokupanFn = fnMatch[1];
-        cachedXiaokupanExp = Date.now() + 6 * 3600 * 1000;
-        return cachedXiaokupanFn;
+  if (inflightXiaokupanFn) return inflightXiaokupanFn;
+
+  inflightXiaokupanFn = (async () => {
+    try {
+      const html = await fetchText('https://xiaokupan.com/', { timeoutMs });
+      const assetMatch = html.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/);
+      if (assetMatch) {
+        const js = await fetchText(`https://xiaokupan.com${assetMatch[0]}`, { timeoutMs });
+        const routeIdx = js.indexOf('"/s/$query"');
+        const segment = routeIdx >= 0 ? js.slice(Math.max(0, routeIdx - 1500), routeIdx + 500) : js;
+        const fnMatch = segment.match(/createServerRpc\("([a-f0-9]{64})"\)/);
+        if (fnMatch?.[1]) {
+          cachedXiaokupanFn = fnMatch[1];
+          cachedXiaokupanExp = Date.now() + 6 * 3600 * 1000;
+          return cachedXiaokupanFn;
+        }
       }
+    } catch {
+      // fallback to default function id
+    } finally {
+      inflightXiaokupanFn = null;
     }
-  } catch {
-    // fallback to default function id
-  }
-  cachedXiaokupanFn = XIAOKUPAN_DEFAULT_FN;
-  cachedXiaokupanExp = Date.now() + 1800 * 1000;
-  return cachedXiaokupanFn;
+    cachedXiaokupanFn = XIAOKUPAN_DEFAULT_FN;
+    cachedXiaokupanExp = Date.now() + 1800 * 1000;
+    return cachedXiaokupanFn;
+  })();
+
+  return inflightXiaokupanFn;
 }
 
 function indexSerovalNodes(node, refs) {
@@ -154,16 +163,20 @@ async function pluginXiaokupan(keyword, timeoutMs = 7000) {
   }
   if (!merged) return [];
 
+  const cfg = getConfig();
   const results = [];
   for (const [dtype, list] of Object.entries(merged)) {
     if (!Array.isArray(list)) continue;
     for (const it of list) {
       if (!it || typeof it !== 'object') continue;
+      const src = String(it.source || 'plugin:xiaokupan').trim();
+      if (cfg.hideAdsAndOwn && (src === 'own' || src === 'cms')) {
+        continue;
+      }
       const rawUrl = cleanShareUrl(it.url || it.link || '');
       const type = detectDriveType(rawUrl, dtype);
       if (!rawUrl || type === 'others') continue;
       const password = String(it.password || '').trim() || extractPasswordFromUrl(rawUrl);
-      const src = String(it.source || 'plugin:xiaokupan').trim();
       results.push({
         unique_id: `xiaokupan:${normalizeLinkKey(rawUrl)}`,
         title: String(it.note || it.title || keyword).trim(),
@@ -172,7 +185,7 @@ async function pluginXiaokupan(keyword, timeoutMs = 7000) {
         type,
         password,
         datetime: String(it.datetime || ''),
-        source: src.startsWith('plugin:') ? src : `plugin:xiaokupan`
+        source: src.startsWith('plugin:') || src.startsWith('tg:') ? src : `plugin:xiaokupan`
       });
     }
   }
@@ -370,6 +383,7 @@ async function pluginYunso(keyword, timeoutMs = 7000) {
 const YINGSO_API = 'https://ysapi.yingso.fun';
 let cachedYingsoCfg = null;
 let cachedYingsoExp = 0;
+let inflightYingsoCfg = null;
 
 function xorUTF16(text = '', key = '') {
   if (!text || !key) return text;
@@ -393,32 +407,42 @@ async function getYingsoConfig(timeoutMs = 4000) {
   if (cachedYingsoCfg && Date.now() < cachedYingsoExp) {
     return cachedYingsoCfg;
   }
-  const attempts = [
-    { path: '/test1', key: '672134612' },
-    { path: '/test', key: '12345678' }
-  ];
-  for (const a of attempts) {
+  if (inflightYingsoCfg) return inflightYingsoCfg;
+
+  inflightYingsoCfg = (async () => {
     try {
-      const json = await fetchJson(`${YINGSO_API}${a.path}`, {
-        timeoutMs,
-        headers: {
-          origin: 'https://yingso.fun',
-          referer: 'https://yingso.fun/'
-        }
-      });
-      if (json?.code === 200 && typeof json.data === 'string') {
-        const cfg = JSON.parse(xorUTF16(json.data, a.key));
-        if (cfg?.url_version && cfg?.user_id && cfg?.end > cfg?.start) {
-          cachedYingsoCfg = cfg;
-          cachedYingsoExp = Date.now() + 15 * 60 * 1000;
-          return cfg;
+      const attempts = [
+        { path: '/test1', key: '672134612' },
+        { path: '/test', key: '12345678' }
+      ];
+      for (const a of attempts) {
+        try {
+          const json = await fetchJson(`${YINGSO_API}${a.path}`, {
+            timeoutMs,
+            headers: {
+              origin: 'https://yingso.fun',
+              referer: 'https://yingso.fun/'
+            }
+          });
+          if (json?.code === 200 && typeof json.data === 'string') {
+            const cfg = JSON.parse(xorUTF16(json.data, a.key));
+            if (cfg?.url_version && cfg?.user_id && cfg?.end > cfg?.start) {
+              cachedYingsoCfg = cfg;
+              cachedYingsoExp = Date.now() + 15 * 60 * 1000;
+              return cfg;
+            }
+          }
+        } catch {
+          // try next
         }
       }
-    } catch {
-      // try next
+      throw new Error('Failed to fetch yingso dynamic config');
+    } finally {
+      inflightYingsoCfg = null;
     }
-  }
-  throw new Error('Failed to fetch yingso dynamic config');
+  })();
+
+  return inflightYingsoCfg;
 }
 
 function encryptYingsoBody(payload, cfg) {
@@ -569,25 +593,37 @@ async function pluginAipan(keyword, timeoutMs = 7000) {
  */
 let cached488Cookie = '';
 let cached488Exp = 0;
+let inflight488Cookie = null;
 
 async function get488Cookie(timeoutMs = 4000) {
   if (cached488Cookie && Date.now() < cached488Exp) {
     return cached488Cookie;
   }
-  const res = await httpFetch('https://488.run/', {
-    timeoutMs,
-    headers: { referer: 'https://488.run/' }
-  });
-  const setCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie') || ''];
-  for (const c of setCookie) {
-    const m = String(c).match(/yd_frontend=[^;\s]+/);
-    if (m) {
-      cached488Cookie = m[0];
-      cached488Exp = Date.now() + 6 * 3600 * 1000;
-      return cached488Cookie;
+  if (inflight488Cookie) return inflight488Cookie;
+
+  inflight488Cookie = (async () => {
+    try {
+      const res = await httpFetch('https://488.run/', {
+        timeoutMs,
+        headers: { referer: 'https://488.run/' }
+      });
+      const setCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie') || ''];
+      try { await res.body?.cancel(); } catch {}
+      for (const c of setCookie) {
+        const m = String(c).match(/yd_frontend=[^;\s]+/);
+        if (m) {
+          cached488Cookie = m[0];
+          cached488Exp = Date.now() + 6 * 3600 * 1000;
+          return cached488Cookie;
+        }
+      }
+      return '';
+    } finally {
+      inflight488Cookie = null;
     }
-  }
-  return '';
+  })();
+
+  return inflight488Cookie;
 }
 
 async function plugin488run(keyword, timeoutMs = 7000) {
@@ -787,21 +823,32 @@ async function pluginErxiaopan(keyword, timeoutMs = 7000) {
  */
 let cachedMipanToken = '';
 let cachedMipanExp = 0;
+let inflightMipanToken = null;
 
 async function getMipanToken(timeoutMs = 4000) {
   if (cachedMipanToken && Date.now() < cachedMipanExp) {
     return cachedMipanToken;
   }
-  const json = await fetchJson('https://www.mipan.so/api/token', {
-    timeoutMs,
-    headers: { referer: 'https://www.mipan.so/' }
-  });
-  if (json?.token) {
-    cachedMipanToken = json.token;
-    cachedMipanExp = Date.now() + Math.max(300, (json.ttl || 7200) - 300) * 1000;
-    return cachedMipanToken;
-  }
-  throw new Error('Failed to fetch relay token');
+  if (inflightMipanToken) return inflightMipanToken;
+
+  inflightMipanToken = (async () => {
+    try {
+      const json = await fetchJson('https://www.mipan.so/api/token', {
+        timeoutMs,
+        headers: { referer: 'https://www.mipan.so/' }
+      });
+      if (json?.token) {
+        cachedMipanToken = json.token;
+        cachedMipanExp = Date.now() + Math.max(300, (json.ttl || 7200) - 300) * 1000;
+        return cachedMipanToken;
+      }
+      throw new Error('Failed to fetch relay token');
+    } finally {
+      inflightMipanToken = null;
+    }
+  })();
+
+  return inflightMipanToken;
 }
 
 async function pluginMipanRelay(keyword, timeoutMs = 8000) {

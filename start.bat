@@ -7,6 +7,11 @@ if not exist "node_modules\" (
   call npm install
 )
 
-echo 🚀 正在启动 PanSo Node...
-call npm start
+if "%1"=="--daemon" (
+  echo 🛡️ 正在以 7x24 自愈守护模式启动 盘松 ^(PANSONG^)...
+  call npm run daemon
+) else (
+  echo 🚀 正在启动 盘松 ^(PANSONG^)...
+  call npm start
+)
 pause

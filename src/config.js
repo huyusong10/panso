@@ -7,6 +7,32 @@ export const ROOT_DIR = path.resolve(__dirname, '..');
 export const DATA_DIR = path.join(ROOT_DIR, 'data');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
+export function writeJsonAtomic(filePath, obj) {
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    const tmpFile = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, filePath);
+    return true;
+  } catch (err) {
+    console.error('[Storage] 原子写入失败:', filePath, err.message);
+    return false;
+  }
+}
+
+export function readJsonSafe(filePath, fallback = null) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
 export const DEFAULT_TG_CHANNELS = [
   'clouddriveresources',
   'dedao2019',
@@ -69,8 +95,8 @@ export const DEFAULT_CONFIG = {
   host: process.env.HOST || '0.0.0.0',
   proxy: process.env.PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '',
   enableTelegram: true,
-  tgConcurrency: 24,
-  tgTimeoutMs: 3600,
+  tgConcurrency: 16,
+  tgTimeoutMs: 4200,
   pluginTimeoutMs: 7500,
   cacheTtlMinutes: 30,
   hideAdsAndOwn: true,
@@ -82,29 +108,19 @@ export const DEFAULT_CONFIG = {
 let currentConfig = null;
 
 export function loadConfig() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(CONFIG_FILE)) {
-      const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
-      // 自动合并新版本增加的默认插件
-      const savedPlugins = Array.isArray(parsed.enabledPlugins) ? parsed.enabledPlugins : DEFAULT_CONFIG.enabledPlugins;
-      const mergedPlugins = Array.from(new Set([...savedPlugins, ...DEFAULT_CONFIG.enabledPlugins]));
-      currentConfig = {
-        ...DEFAULT_CONFIG,
-        ...parsed,
-        channels: Array.isArray(parsed.channels) ? parsed.channels : DEFAULT_CONFIG.channels,
-        enabledPlugins: mergedPlugins
-      };
-      return currentConfig;
-    }
-  } catch (err) {
-    console.warn('[Config] 读取配置文件失败，使用默认配置:', err.message);
+  const parsed = readJsonSafe(CONFIG_FILE, null);
+  if (parsed && typeof parsed === 'object') {
+    const savedPlugins = Array.isArray(parsed.enabledPlugins) ? parsed.enabledPlugins : DEFAULT_CONFIG.enabledPlugins;
+    currentConfig = {
+      ...DEFAULT_CONFIG,
+      ...parsed,
+      channels: Array.isArray(parsed.channels) ? parsed.channels : DEFAULT_CONFIG.channels,
+      enabledPlugins: savedPlugins
+    };
+    return currentConfig;
   }
   currentConfig = { ...DEFAULT_CONFIG };
-  saveConfig(currentConfig);
+  writeJsonAtomic(CONFIG_FILE, currentConfig);
   return currentConfig;
 }
 
@@ -124,14 +140,10 @@ export function saveConfig(partial) {
       .map(s => s.trim().replace(/^@/, ''))
       .filter(Boolean);
   }
-  currentConfig = next;
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(currentConfig, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Config] 保存配置失败:', err.message);
+  if (Array.isArray(next.channels)) {
+    next.channels = Array.from(new Set(next.channels.map(s => String(s).trim().replace(/^@/, '')).filter(Boolean)));
   }
+  currentConfig = next;
+  writeJsonAtomic(CONFIG_FILE, currentConfig);
   return currentConfig;
 }

@@ -15,16 +15,30 @@ const channelTelemetry = new Map();
 
 function ensureChStat(ch) {
   if (!channelTelemetry.has(ch)) {
+    if (channelTelemetry.size > 250) {
+      const oldest = channelTelemetry.keys().next().value;
+      channelTelemetry.delete(oldest);
+    }
     channelTelemetry.set(ch, {
       channel: ch,
       runs: 0,
       hits: 0,
       fails: 0,
+      consecutiveFails: 0,
       totalItems: 0,
       noPreview: false
     });
   }
   return channelTelemetry.get(ch);
+}
+
+function getChannelPriorityScore(rawCh) {
+  const ch = String(rawCh).trim().replace(/^@/, '');
+  const st = channelTelemetry.get(ch);
+  if (!st || st.runs === 0) return 0.5;
+  if (st.noPreview && st.hits === 0) return -1;
+  if (st.consecutiveFails >= 4) return -0.5;
+  return (st.hits + 1) / (st.runs + 2) + Math.min(0.4, st.totalItems / 200);
 }
 
 export function getTgChannelHealth(configuredChannels = []) {
@@ -74,14 +88,17 @@ export async function searchSingleTgChannel(channel, keyword, timeoutMs = 5500) 
         html = await fetchText(searchUrl, { timeoutMs: 3500, useProxy: false });
       } catch {
         stat.fails++;
+        stat.consecutiveFails = (stat.consecutiveFails || 0) + 1;
         return [];
       }
     } else {
       stat.fails++;
+      stat.consecutiveFails = (stat.consecutiveFails || 0) + 1;
       return [];
     }
   }
 
+  stat.consecutiveFails = 0;
   if (html && !html.includes('tgme_channel_info') && !html.includes('tgme_widget_message_wrap')) {
     stat.noPreview = true;
   }
@@ -223,20 +240,31 @@ export function parseTgChannelHtml(html, channel, keyword) {
 export async function searchAllTgChannels(
   keyword,
   channels = [],
-  concurrency = 12,
-  timeoutMs = 5500,
+  concurrency = 14,
+  timeoutMs = 4500,
   onChannelResult = null
 ) {
   if (!channels.length) return { items: [], stats: { totalChannels: 0, activeChannels: 0, count: 0 } };
+
+  // 按频道历史命中率优先级排序：高命中率频道排在第一梯队优先并发抓取，尽快推送首屏结果
+  const orderedChannels = channels
+    .map(ch => String(ch).trim().replace(/^@/, ''))
+    .filter(Boolean)
+    .sort((a, b) => getChannelPriorityScore(b) - getChannelPriorityScore(a));
 
   const results = [];
   let activeChannels = 0;
   let index = 0;
 
-  const workerCount = Math.min(Math.max(1, concurrency), channels.length);
+  const workerCount = Math.min(Math.max(1, concurrency), orderedChannels.length);
   const workers = Array.from({ length: workerCount }, async () => {
-    while (index < channels.length) {
-      const ch = channels[index++];
+    while (index < orderedChannels.length) {
+      const ch = orderedChannels[index++];
+      const st = channelTelemetry.get(ch);
+      // 软降级保护：已确认无公开预览且多次 0 命中的死频道，80% 概率跳过请求以节省连接池与防封
+      if (st && st.noPreview && st.runs >= 3 && st.hits === 0 && Math.random() < 0.8) {
+        continue;
+      }
       try {
         const list = await searchSingleTgChannel(ch, keyword, timeoutMs);
         if (list.length > 0) {
@@ -245,7 +273,7 @@ export async function searchAllTgChannels(
           if (typeof onChannelResult === 'function') {
             try {
               onChannelResult(ch, list, {
-                totalChannels: channels.length,
+                totalChannels: orderedChannels.length,
                 activeChannels,
                 count: results.length
               });
@@ -265,7 +293,7 @@ export async function searchAllTgChannels(
   return {
     items: results,
     stats: {
-      totalChannels: channels.length,
+      totalChannels: orderedChannels.length,
       activeChannels,
       count: results.length
     }

@@ -2,8 +2,13 @@ import { httpFetch } from '../utils/http.js';
 import { cleanShareUrl, detectDriveType, extractPasswordFromUrl } from '../utils/parser.js';
 
 const checkCache = new Map();
-const VALID_TTL_MS = 20 * 60 * 1000;      // 有效链接缓存 20 分钟
+const inFlightChecks = new Map();
+const MAX_CHECK_CACHE = 3000;
+const VALID_TTL_MS = 30 * 60 * 1000;      // 有效链接缓存 30 分钟
 const INVALID_TTL_MS = 6 * 60 * 60 * 1000; // 失效链接缓存 6 小时
+
+let totalCheckedCount = 0;
+let checkCacheHits = 0;
 
 function formatBytes(bytes) {
   const n = Number(bytes);
@@ -21,12 +26,16 @@ function getCachedState(url) {
     checkCache.delete(url);
     return null;
   }
+  // LRU 晋升：移动到 Map 尾部
+  checkCache.delete(url);
+  checkCache.set(url, entry);
+  checkCacheHits++;
   return entry.result;
 }
 
 function setCachedState(url, result) {
   const ttl = result.state === 'invalid' ? INVALID_TTL_MS : VALID_TTL_MS;
-  if (checkCache.size > 2000) {
+  if (checkCache.size >= MAX_CHECK_CACHE) {
     const oldest = checkCache.keys().next().value;
     checkCache.delete(oldest);
   }
@@ -34,6 +43,24 @@ function setCachedState(url, result) {
     result,
     expiresAt: Date.now() + ttl
   });
+}
+
+export function sweepCheckerCache() {
+  const now = Date.now();
+  for (const [k, v] of checkCache.entries()) {
+    if (now > v.expiresAt) {
+      checkCache.delete(k);
+    }
+  }
+}
+
+export function getCheckerStats() {
+  return {
+    cacheEntries: checkCache.size,
+    inFlight: inFlightChecks.size,
+    totalChecked: totalCheckedCount,
+    cacheHits: checkCacheHits
+  };
 }
 
 /**
@@ -48,6 +75,7 @@ async function checkQuark(url, password = '') {
   const res = await httpFetch('https://drive-pc.quark.cn/1/clouddrive/share/sharepage/token?pr=ucpro&fr=pc', {
     method: 'POST',
     timeoutMs: 6500,
+    retries: 0,
     headers: {
       'content-type': 'application/json',
       origin: 'https://pan.quark.cn',
@@ -93,6 +121,7 @@ async function checkAliyun(url) {
     {
       method: 'POST',
       timeoutMs: 6500,
+      retries: 0,
       headers: {
         'content-type': 'application/json',
         origin: 'https://www.alipan.com',
@@ -132,6 +161,7 @@ async function checkBaidu(url) {
 
   const res = await httpFetch(listUrl, {
     timeoutMs: 6000,
+    retries: 0,
     headers: { referer: url }
   });
   const json = await res.json();
@@ -180,6 +210,7 @@ async function checkTianyi(url) {
   const api = `https://cloud.189.cn/api/open/share/getShareInfoByCodeV2.action?shareCode=${encodeURIComponent(shareCode)}`;
   const res = await httpFetch(api, {
     timeoutMs: 6500,
+    retries: 0,
     headers: {
       accept: 'application/json;charset=UTF-8',
       referer: url
@@ -213,6 +244,7 @@ async function check115(url, password = '') {
   const api = `https://webapi.115.com/share/snap?share_code=${encodeURIComponent(shareCode)}&receive_code=${encodeURIComponent(pwd || '')}&offset=0&limit=1`;
   const res = await httpFetch(api, {
     timeoutMs: 6000,
+    retries: 0,
     headers: { referer: url }
   });
   const json = await res.json();
@@ -242,12 +274,14 @@ async function check115(url, password = '') {
 async function checkGenericWeb(url) {
   const res = await httpFetch(url, {
     timeoutMs: 6000,
+    retries: 0,
     headers: {
       'user-agent':
         'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36'
     }
   });
   if (res.status === 404 || res.status === 410) {
+    try { await res.body?.cancel(); } catch {}
     return { state: 'invalid', message: '页面不存在' };
   }
   const html = (await res.text()).slice(0, 35000);
@@ -263,6 +297,9 @@ async function checkGenericWeb(url) {
   return { state: 'unknown', message: `HTTP ${res.status}` };
 }
 
+/**
+ * 单链接验活（含缓存命中 + Singleflight 并发合并，避免相同 URL 重复请求网盘）
+ */
 export async function checkSingleLink(item) {
   const url = cleanShareUrl(item?.url || '');
   if (!url) return { url: '', state: 'unknown', message: '空链接' };
@@ -272,33 +309,45 @@ export async function checkSingleLink(item) {
     return { ...cached, cacheHit: true };
   }
 
-  const diskType = detectDriveType(url, item?.disk_type || item?.type);
-  const password = item?.password || extractPasswordFromUrl(url);
-
-  let outcome = { state: 'unknown', message: '暂不支持检测' };
-  try {
-    if (diskType === 'quark') outcome = await checkQuark(url, password);
-    else if (diskType === 'aliyun') outcome = await checkAliyun(url);
-    else if (diskType === 'baidu') outcome = await checkBaidu(url);
-    else if (diskType === 'tianyi') outcome = await checkTianyi(url);
-    else if (diskType === '115') outcome = await check115(url, password);
-    else if (['uc', '123', 'xunlei'].includes(diskType)) outcome = await checkGenericWeb(url);
-  } catch (err) {
-    outcome = { state: 'unknown', message: err.message };
+  if (inFlightChecks.has(url)) {
+    return inFlightChecks.get(url);
   }
 
-  const finalResult = {
-    url,
-    disk_type: diskType,
-    state: outcome.state,
-    message: outcome.message,
-    shareTitle: outcome.shareTitle || '',
-    fileSize: outcome.fileSize || ''
-  };
-  if (outcome.state === 'valid' || outcome.state === 'locked' || outcome.state === 'invalid') {
-    setCachedState(url, finalResult);
-  }
-  return finalResult;
+  const task = (async () => {
+    totalCheckedCount++;
+    const diskType = detectDriveType(url, item?.disk_type || item?.type);
+    const password = item?.password || extractPasswordFromUrl(url);
+
+    let outcome = { state: 'unknown', message: '暂不支持检测' };
+    try {
+      if (diskType === 'quark') outcome = await checkQuark(url, password);
+      else if (diskType === 'aliyun') outcome = await checkAliyun(url);
+      else if (diskType === 'baidu') outcome = await checkBaidu(url);
+      else if (diskType === 'tianyi') outcome = await checkTianyi(url);
+      else if (diskType === '115') outcome = await check115(url, password);
+      else if (['uc', '123', 'xunlei'].includes(diskType)) outcome = await checkGenericWeb(url);
+    } catch (err) {
+      outcome = { state: 'unknown', message: err.message };
+    }
+
+    const finalResult = {
+      url,
+      disk_type: diskType,
+      state: outcome.state,
+      message: outcome.message,
+      shareTitle: outcome.shareTitle || '',
+      fileSize: outcome.fileSize || ''
+    };
+    if (outcome.state === 'valid' || outcome.state === 'locked' || outcome.state === 'invalid') {
+      setCachedState(url, finalResult);
+    }
+    return finalResult;
+  })().finally(() => {
+    inFlightChecks.delete(url);
+  });
+
+  inFlightChecks.set(url, task);
+  return task;
 }
 
 export async function checkBatchLinks(items = []) {

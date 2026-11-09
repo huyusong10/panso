@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>盘松 · PANSONG</title>
+  <title>盘松 · PANSONG — 影视海报墙与多网盘聚合检索</title>
   <!-- 盘松 东方极简「圆盘苍松 + 朱砂印」Favicon -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><rect width='36' height='36' rx='8' fill='%23214E3F'/><circle cx='18' cy='18' r='12.5' fill='none' stroke='%23F6F4EE' stroke-opacity='0.28' stroke-width='1.2'/><path d='M18 7.5L11.5 15h4l-5 6.5h15l-5-6.5h4L18 7.5z' fill='%23F6F4EE'/><rect x='16.6' y='21.5' width='2.8' height='5' rx='0.8' fill='%23F6F4EE'/><rect x='23.5' y='22.5' width='4.2' height='4.2' rx='1' fill='%23C43B2B'/></svg>" />
   <script>
@@ -19,9 +19,9 @@
 </head>
 <body>
   <div class="page-canvas" id="pageCanvas">
-    <!-- 顶部栏：品牌 + 居中搜索匣 + 功能键 -->
+    <!-- 顶部栏：品牌印章 + 居中搜索匣 + 功能键 -->
     <header class="top-bar">
-      <div class="brand-lockup" id="brandHome" title="返回盘松海报墙">
+      <div class="brand-lockup" id="brandHome" title="返回盘松海报墙首页">
         <svg class="brand-seal" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect width="36" height="36" rx="8" fill="var(--pine)" />
           <circle cx="18" cy="18" r="12.5" fill="none" stroke="var(--surface)" stroke-opacity="0.26" stroke-width="1.2" />
@@ -34,7 +34,7 @@
             <span class="brand-cn">盘松</span>
             <span class="brand-stamp">私藏</span>
           </div>
-          <span class="brand-sub" id="headerMetaInfo">PANSONG · 多网盘聚合检索</span>
+          <span class="brand-sub" id="headerMetaInfo">PANSONG · 7×24 多网盘聚合引擎</span>
         </div>
       </div>
 
@@ -48,22 +48,23 @@
             id="kwInput"
             class="search-input"
             type="search"
-            placeholder="输入剧名、电影、番剧或书名（按 / 键聚焦）…"
+            placeholder="输入剧名、电影、番剧、纪录片或书名（按 / 键聚焦）…"
             aria-label="检索词"
           />
           <button type="button" class="search-clear" id="clearInputBtn" title="清空">清空</button>
-          <button type="submit" class="search-submit" id="searchSubmitBtn">检索</button>
+          <button type="submit" class="search-submit" id="searchSubmitBtn">寻盘</button>
         </form>
         <div class="quick-tags" id="quickTagsRow"></div>
       </div>
 
       <nav class="top-actions">
-        <button type="button" class="ink-pill" id="openFavBtn">
+        <button type="button" class="ink-pill" id="openFavBtn" title="查看私藏书签">
           <span>书签</span>
           <span class="pill-badge" id="favCountBadge">0</span>
         </button>
-        <button type="button" class="ink-pill" id="openSettingsBtn">
-          <span>设置</span>
+        <button type="button" class="ink-pill" id="openSettingsBtn" title="数据源与 7×24 监控面板">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span>引擎</span>
         </button>
         <button type="button" class="ink-pill" id="themeToggleBtn" title="切换宣纸/松烟模式">
           <span id="themeText">宣纸</span>
@@ -75,11 +76,25 @@
     <section class="poster-wall-stage" id="posterWallStage">
       <div class="wall-toolbar">
         <div class="wall-channels" id="wallChannelTabs"></div>
-        <div class="wall-sorts" id="wallSortTabs">
-          <button type="button" class="sort-pill active" data-sort="recommend">按热度</button>
-          <button type="button" class="sort-pill" data-sort="time">按最新</button>
-          <button type="button" class="sort-pill" data-sort="rank">按高分</button>
+        <div class="wall-right-tools">
+          <input
+            type="search"
+            class="wall-filter-input"
+            id="wallFilterInput"
+            placeholder="墙内速筛片名…"
+            aria-label="在海报墙中筛选"
+          />
+          <div class="wall-sorts" id="wallSortTabs">
+            <button type="button" class="sort-pill active" data-sort="recommend">按热度</button>
+            <button type="button" class="sort-pill" data-sort="time">按最新</button>
+            <button type="button" class="sort-pill" data-sort="rank">按高分</button>
+          </div>
         </div>
+      </div>
+
+      <div class="wall-status-strip" id="wallStatusStrip">
+        <span id="wallSummaryText">正在展卷近期热播佳作…</span>
+        <span class="wall-tip">点击任意海报即刻并发检索 10 大插件源与 41 个 TG 频道</span>
       </div>
 
       <div class="poster-grid" id="posterGrid"></div>
@@ -91,13 +106,20 @@
 
     <!-- 主视图 B：网盘检索结果视图（点击海报或搜索时切换，支持一键返回原海报墙位置） -->
     <section class="search-results-stage" id="searchResultsStage" hidden>
-      <!-- 返回海报墙导航条 -->
+      <!-- 返回海报墙与快捷批处理导航条 -->
       <div class="back-wall-bar">
-        <button type="button" class="back-wall-btn" id="backToWallBtn">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          <span>返回海报墙（保留浏览位置）</span>
-        </button>
-        <div class="current-query-title" id="currentQueryBanner"></div>
+        <div class="back-wall-left">
+          <button type="button" class="back-wall-btn" id="backToWallBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <span>返回海报墙</span>
+          </button>
+          <div class="current-query-title" id="currentQueryBanner"></div>
+        </div>
+        <div class="back-wall-right">
+          <button type="button" class="ghost-btn" id="batchCopyValidBtn" title="一键复制当前页所有有效网盘链接与提取码">
+            批量复制本页有效链接
+          </button>
+        </div>
       </div>
 
       <!-- 筛选与控制栏 -->
@@ -109,16 +131,16 @@
             <button type="button" class="spec-chip" data-spec="杜比">杜比/HDR</button>
             <button type="button" class="spec-chip" data-spec="全集">全集</button>
           </div>
-          <input type="search" class="ctrl-input" id="subFilterInput" placeholder="二次筛选…" />
+          <input type="search" class="ctrl-input" id="subFilterInput" placeholder="结果内二次筛选…" />
           <select class="ctrl-select" id="sourceFilterSelect" aria-label="来源过滤">
             <option value="all">全部来源</option>
             <option value="tg">Telegram 频道</option>
             <option value="plugin">直连插件源</option>
           </select>
           <select class="ctrl-select" id="sortSelect" aria-label="排序方式">
-            <option value="score">按相关度</option>
-            <option value="date">按最新时间</option>
-            <option value="alive">有效优先</option>
+            <option value="score">综合优选排序</option>
+            <option value="alive">有效实测优先</option>
+            <option value="date">最新发布优先</option>
           </select>
           <label class="ctrl-check" title="将同一帖子或同名剧集下的多个网盘折叠为一行">
             <input type="checkbox" id="foldMultiDriveCheckbox" checked />
@@ -128,20 +150,30 @@
             <input type="checkbox" id="hideDeadCheckbox" />
             <span>隐藏失效</span>
           </label>
-          <button type="button" class="ctrl-btn" id="forceRefreshBtn" title="忽略缓存重新抓取">刷新</button>
+          <button type="button" class="ctrl-btn" id="forceRefreshBtn" title="忽略缓存重新抓取">强制刷新</button>
         </div>
       </div>
 
-      <!-- 遥测与源状态细栏 -->
+      <!-- 遥测与源状态细栏（支持点击源名称过滤） -->
       <div class="telemetry-strip" id="telemetryBar" hidden>
         <div class="tele-left" id="toolbarStats"></div>
         <div class="tele-right" id="sourceDiagBar"></div>
+      </div>
+
+      <!-- 流式汇聚进度墨线 -->
+      <div class="stream-progress-track" id="streamProgressTrack" hidden>
+        <div class="stream-progress-bar" id="streamProgressBar"></div>
       </div>
 
       <!-- 结果主列表（温润宣纸笺） -->
       <main class="results-paper" id="resultsMount"></main>
     </section>
   </div>
+
+  <!-- 悬浮回到顶部按钮 -->
+  <button type="button" class="back-top-fab" id="backToTopBtn" title="回到顶部" hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
 
   <!-- 手机扫码直达弹窗 -->
   <div class="modal-mask" id="qrModal" hidden>
@@ -159,14 +191,32 @@
     </div>
   </div>
 
-  <!-- 设置弹窗 -->
+  <!-- 引擎设置与 7x24 运行监控弹窗 -->
   <div class="modal-mask" id="settingsModal" hidden>
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title">数据源与引擎设置</div>
+        <div class="modal-title">盘松引擎设置与 7×24 运行监控</div>
         <button type="button" class="modal-close" id="closeSettingsBtn">关闭</button>
       </div>
       <div class="modal-body">
+        <!-- 7x24 运行状态与防封护盾看板 -->
+        <div class="runtime-shield-card" id="runtimeShieldCard">
+          <div class="shield-header">
+            <div class="shield-title">
+              <span class="live-dot"></span>
+              <span>7×24 守护与防封护盾运行中</span>
+            </div>
+            <span class="shield-sub" id="runtimeUptimeText">正在读取运行指标…</span>
+          </div>
+          <div class="shield-metrics" id="runtimeMetricsGrid"></div>
+          <div class="shield-badges">
+            <span class="shield-pill">✓ 浏览器指纹粘性轮换</span>
+            <span class="shield-pill">✓ 分域并发微抖动闸门</span>
+            <span class="shield-pill">✓ Singleflight 防并发击穿</span>
+            <span class="shield-pill">✓ 海报墙磁盘快照容灾</span>
+          </div>
+        </div>
+
         <div class="field-group">
           <div class="field-label-row">
             <span>本地代理地址（用于直连 Telegram 频道）</span>
@@ -177,22 +227,22 @@
         </div>
 
         <div class="field-group">
-          <div class="field-label-row"><span>检索策略</span></div>
+          <div class="field-label-row"><span>检索与净网策略</span></div>
           <div class="check-row">
             <label class="check-item">
               <input type="checkbox" id="cfgEnableTg" checked />
-              <span>启用 Telegram 频道并发抓取</span>
+              <span>启用 Telegram 频道并发抓取（按命中率智能排优）</span>
             </label>
             <label class="check-item">
               <input type="checkbox" id="cfgHideOwn" checked />
-              <span>净网过滤（自动剔除推广链接）</span>
+              <span>净网过滤（自动剔除推广置顶与引流噪音）</span>
             </label>
           </div>
         </div>
 
         <div class="field-group">
           <div class="field-label-row">
-            <span>直连插件源与熔断器状态</span>
+            <span>直连插件源与自适应熔断器状态</span>
             <button type="button" class="ghost-btn" id="resetBreakersBtn">重置熔断器</button>
           </div>
           <div class="plugin-grid" id="cfgPluginsGrid"></div>

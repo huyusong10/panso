@@ -1,11 +1,12 @@
 {
-  "name": "panso-node",
-  "version": "1.0.0",
-  "description": "跨平台私人网盘资源聚合搜索引擎 (Node.js 纯净版 · 支持 TG 频道与多源插件并发检索 + 链接存活检测)",
+  "name": "pansong",
+  "version": "1.2.0",
+  "description": "盘松 PANSONG · 零 Docker 跨平台私人影视海报墙与多网盘资源聚合检索引擎 (支持 7x24 自愈守护)",
   "type": "module",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node --max-old-space-size=512 src/server.js",
+    "daemon": "node src/daemon.js",
     "dev": "node --watch src/server.js"
   },
   "engines": {

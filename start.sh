@@ -7,5 +7,10 @@ if [ ! -d "node_modules" ]; then
   npm install
 fi
 
-echo "🚀 正在启动 PanSo Node..."
-npm start
+if [ "$1" = "--daemon" ] || [ "$1" = "-d" ]; then
+  echo "🛡️ 正在以 7x24 自愈守护模式启动 盘松 (PANSONG)..."
+  npm run daemon
+else
+  echo "🚀 正在启动 盘松 (PANSONG)..."
+  npm start
+fi

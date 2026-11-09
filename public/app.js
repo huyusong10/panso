@@ -23,6 +23,7 @@
     meta: null,
     activeDrive: 'all',
     sourceFilter: 'all',
+    exactSourceFilter: '',
     specFilter: '',
     subFilter: '',
     sortBy: 'score',
@@ -38,19 +39,20 @@
     hotWords: ['凡人修仙传', '仙逆', '奥德赛', '牧神记', '现在就出发', '庆余年', '沙丘', '剑来'],
     viewMode: 'wall',
     wallChannels: [
-      { id: 'hot_tv', label: '热播剧集' },
-      { id: 'hot_movie', label: '热门电影' },
-      { id: 'top_movie', label: '豆瓣高分' },
-      { id: 'cn_tv', label: '国产剧' },
-      { id: 'anime', label: '动漫番剧' },
-      { id: 'us_tv', label: '美剧' },
-      { id: 'kr_jp_tv', label: '日韩剧' },
-      { id: 'variety', label: '热门综艺' },
-      { id: 'doc', label: '纪录片' },
-      { id: 'cold_gems', label: '冷门佳片' }
+      { id: 'hot_tv',     label: '热播剧集' },
+      { id: 'hot_movie',  label: '热门电影' },
+      { id: 'top_movie',  label: '豆瓣高分' },
+      { id: 'cn_tv',      label: '国产剧' },
+      { id: 'anime',      label: '动漫番剧' },
+      { id: 'us_tv',      label: '美剧' },
+      { id: 'kr_tv',      label: '日韩剧' },
+      { id: 'variety',    label: '热门综艺' },
+      { id: 'doc',        label: '纪录片' },
+      { id: 'hidden_gem', label: '冷门佳片' }
     ],
     wallChannel: 'hot_tv',
     wallSort: 'recommend',
+    wallFilterKw: '',
     wallItems: [],
     wallSeenTitles: new Set(),
     wallNextStart: 0,
@@ -62,7 +64,8 @@
     serverConfig: null,
     availablePlugins: [],
     pluginHealth: {},
-    tgHealth: { channels: [], deadCandidates: [] }
+    tgHealth: { channels: [], deadCandidates: [] },
+    runtimeStats: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -139,7 +142,7 @@
     t.textContent = msg;
     t.classList.add('show');
     clearTimeout(showToast._timer);
-    showToast._timer = setTimeout(() => t.classList.remove('show'), 2100);
+    showToast._timer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
   function escapeHtml(str) {
@@ -172,6 +175,18 @@
     const m = String(dt.getMonth() + 1).padStart(2, '0');
     const day = String(dt.getDate()).padStart(2, '0');
     return `${y}-${m}-${day}`;
+  }
+
+  function formatUptime(sec) {
+    const s = Math.max(0, Number(sec) || 0);
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const remS = s % 60;
+    if (d > 0) return `${d}天 ${h}小时 ${m}分`;
+    if (h > 0) return `${h}小时 ${m}分 ${remS}秒`;
+    if (m > 0) return `${m}分 ${remS}秒`;
+    return `${remS}秒`;
   }
 
   async function copyToClipboard(text) {
@@ -222,6 +237,30 @@
     });
   }
 
+  function updateWallSummary() {
+    const summaryEl = $('wallSummaryText');
+    if (!summaryEl) return;
+    const chObj = state.wallChannels.find(c => c.id === state.wallChannel) || state.wallChannels[0];
+    const sortMap = { recommend: '按热度推荐', time: '按最新上映', rank: '按豆瓣高分' };
+    const filterKw = state.wallFilterKw.trim();
+    if (filterKw) {
+      summaryEl.innerHTML = `当前分类：<b>${escapeHtml(chObj?.label || '热播')}</b> · 墙内筛选「<b>${escapeHtml(filterKw)}</b>」`;
+    } else {
+      summaryEl.innerHTML = `当前分类：<b>${escapeHtml(chObj?.label || '热播')}</b>（${sortMap[state.wallSort] || '推荐'} · 已展卷 <b>${state.wallItems.length}</b> 部佳作）`;
+    }
+  }
+
+  function applyWallFilter() {
+    const gridEl = $('posterGrid');
+    if (!gridEl) return;
+    const kw = state.wallFilterKw.trim().toLowerCase();
+    gridEl.querySelectorAll('.poster-card').forEach(card => {
+      const title = (card.dataset.kw || '').toLowerCase();
+      card.hidden = Boolean(kw && !title.includes(kw));
+    });
+    updateWallSummary();
+  }
+
   function renderWallChannels() {
     const tabsEl = $('wallChannelTabs');
     if (!tabsEl) return;
@@ -245,6 +284,7 @@
     document.querySelectorAll('#wallSortTabs .sort-pill').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.sort === state.wallSort);
     });
+    updateWallSummary();
   }
 
   function renderPosterSkeletons(count = 12) {
@@ -265,7 +305,7 @@
     const card = document.createElement('article');
     card.className = 'poster-card';
     card.dataset.kw = it.title;
-    card.style.animationDelay = `${Math.min(idx * 20, 240)}ms`;
+    card.style.animationDelay = `${Math.min(idx * 18, 220)}ms`;
     const firstChar = String(it.title || '影').slice(0, 1);
     const subLabel = it.rate ? `豆瓣 ${it.rate}` : (it.note || '精选佳作');
 
@@ -278,6 +318,7 @@
         }
         <div class="poster-fallback" ${it.cover ? 'hidden' : ''}>
           <span class="poster-fallback-char">${escapeHtml(firstChar)}</span>
+          <div class="poster-fallback-title">${escapeHtml(it.title)}</div>
         </div>
         <div class="poster-badges">
           ${it.isNew ? `<span class="poster-badge-new">新</span>` : `<span></span>`}
@@ -285,19 +326,42 @@
         </div>
         <div class="poster-bottom-shade">
           <span class="poster-ep">${escapeHtml(it.note || '')}</span>
-          <span class="poster-cta">即刻寻盘 ↗</span>
+          <span class="poster-cta">寻盘 ↗</span>
         </div>
       </div>
-      <div class="poster-title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+      <div class="poster-title-row">
+        <div class="poster-title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+        ${
+          it.doubanUrl
+            ? `<a class="poster-douban-link js-douban-ext" href="${escapeHtml(it.doubanUrl)}" target="_blank" rel="noopener noreferrer" title="在豆瓣查看简介与演职员">豆瓣 ↗</a>`
+            : ''
+        }
+      </div>
       <div class="poster-sub">${escapeHtml(subLabel)}</div>
     `;
 
     const img = card.querySelector('.poster-img');
     const fb = card.querySelector('.poster-fallback');
-    if (img && fb) {
-      img.addEventListener('error', () => {
-        img.hidden = true;
-        fb.hidden = false;
+    if (img) {
+      if (img.complete && img.naturalWidth > 0) {
+        img.classList.add('is-loaded');
+      } else {
+        img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+      }
+      img.addEventListener(
+        'error',
+        () => {
+          img.hidden = true;
+          if (fb) fb.hidden = false;
+        },
+        { once: true }
+      );
+    }
+
+    const extLink = card.querySelector('.js-douban-ext');
+    if (extLink) {
+      extLink.addEventListener('click', (e) => {
+        e.stopPropagation();
       });
     }
 
@@ -307,6 +371,11 @@
       syncSearchBoxClass();
       doSearch(w);
     });
+
+    const filterKw = state.wallFilterKw.trim().toLowerCase();
+    if (filterKw && !String(it.title).toLowerCase().includes(filterKw)) {
+      card.hidden = true;
+    }
 
     return card;
   }
@@ -325,6 +394,7 @@
       state.wallItems = [];
       state.wallSeenTitles = new Set();
       gridEl.innerHTML = renderPosterSkeletons(12);
+      updateWallSummary();
     }
 
     state.wallLoading = true;
@@ -370,6 +440,7 @@
           ? json.data.nextStart
           : reqStart + incoming.length;
         state.wallHasMore = Boolean(json.data.hasMore) && incoming.length > 0;
+        updateWallSummary();
       } else if (reset) {
         gridEl.innerHTML = `<div class="empty-stage" style="grid-column:1/-1">暂时无法获取海报墙数据，请稍后重试</div>`;
       }
@@ -400,13 +471,14 @@
             state.viewMode === 'wall' &&
             !state.wallLoading &&
             state.wallHasMore &&
-            state.wallItems.length > 0
+            state.wallItems.length > 0 &&
+            !state.wallFilterKw.trim()
           ) {
             loadWallPage(false);
           }
         }
       },
-      { rootMargin: '460px 0px' }
+      { rootMargin: '480px 0px' }
     );
     io.observe(sentinel);
   }
@@ -474,7 +546,13 @@
   function getFilteredItems() {
     let list = state.results.slice();
 
-    if (state.sourceFilter === 'tg') {
+    if (state.exactSourceFilter) {
+      if (state.exactSourceFilter === 'tg:') {
+        list = list.filter(x => String(x.source || '').startsWith('tg:'));
+      } else {
+        list = list.filter(x => String(x.source || '') === state.exactSourceFilter);
+      }
+    } else if (state.sourceFilter === 'tg') {
       list = list.filter(x => String(x.source || '').startsWith('tg:'));
     } else if (state.sourceFilter === 'plugin') {
       list = list.filter(x => !String(x.source || '').startsWith('tg:'));
@@ -515,13 +593,11 @@
     const out = [];
 
     for (const item of items) {
-      // 提取去除了标点空白与网盘名的标题签名
       const cleanTitleKey = String(item.title || '')
         .toLowerCase()
         .replace(/(?:夸克|百度|阿里|迅雷|天翼|115|uc|网盘|云盘)/g, '')
         .replace(/[\s·•\-_【】\[\]()（）《》:：]+/g, '');
 
-      // 仅对标题足够明确（>= 4 字符）的条目按标题+来源（或完全一致长标题）合并不同网盘
       const groupKey =
         cleanTitleKey.length >= 6
           ? `t:${cleanTitleKey}`
@@ -620,14 +696,30 @@
       });
     });
 
-    // 同步规格筛选按钮高亮状态
     document.querySelectorAll('#specQuickChips .spec-chip').forEach(chip => {
       chip.classList.toggle('active', chip.dataset.spec === state.specFilter);
     });
   }
 
+  function renderStreamProgress() {
+    const track = $('streamProgressTrack');
+    const bar = $('streamProgressBar');
+    if (!track || !bar) return;
+    if (!state.streaming) {
+      track.hidden = true;
+      return;
+    }
+    track.hidden = false;
+    const done = Number(state.meta?.completedTasks) || 1;
+    const total = Math.max(1, Number(state.meta?.totalTasks) || 11);
+    const pct = Math.min(96, Math.max(14, Math.round((done / total) * 100)));
+    bar.style.width = `${pct}%`;
+  }
+
   function renderTelemetry(driveList) {
     const teleBar = $('telemetryBar');
+    renderStreamProgress();
+
     if (!state.results.length || state.loading) {
       teleBar.hidden = true;
       return;
@@ -643,28 +735,58 @@
 
     const elapsedSec = state.meta?.elapsedMs ? (state.meta.elapsedMs / 1000).toFixed(2) : '0.10';
     const streamBadge = state.streaming
-      ? `<span class="tele-item tele-stream">正在流式汇聚 (${escapeHtml(state.meta?.progress || '实时')})</span>`
+      ? `<span class="tele-item tele-stream">流式汇聚中 (${escapeHtml(state.meta?.progress || '实时')})</span>`
       : '';
+    const exactFilterBadge = state.exactSourceFilter
+      ? `<button type="button" class="diag-pill active" id="clearExactSourceBtn">单源过滤: ${escapeHtml(state.exactSourceFilter)} ✕</button>`
+      : '';
+
     $('toolbarStats').innerHTML = `
       ${streamBadge}
       <span class="tele-item">共得 <b>${state.results.length}</b> 条</span>
       <span class="tele-item">展示 <b>${driveList.length}</b> 组</span>
-      <span class="tele-item">耗时 <b>${elapsedSec}s</b>${state.meta?.cacheHit ? ' · 缓存' : ''}</span>
-      ${validCnt || deadCnt ? `<span class="tele-item">有效 <b class="tele-ok">${validCnt}</b> · 失效 <b class="tele-bad">${deadCnt}</b></span>` : ''}
+      <span class="tele-item">耗时 <b>${elapsedSec}s</b>${state.meta?.cacheHit ? ' · 缓存秒回' : ''}</span>
+      ${validCnt || deadCnt ? `<span class="tele-item">实测有效 <b class="tele-ok">${validCnt}</b> · 失效 <b class="tele-bad">${deadCnt}</b></span>` : ''}
+      ${exactFilterBadge}
     `;
+
+    const clearBtn = $('clearExactSourceBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        state.exactSourceFilter = '';
+        state.page = 1;
+        renderAll();
+      });
+    }
 
     const parts = [];
     if (state.meta?.tgStats) {
       const tg = state.meta.tgStats;
-      parts.push(`<span>TG(${tg.activeChannels}/${tg.totalChannels}): <b>${tg.count}</b></span>`);
+      const isAct = state.exactSourceFilter === 'tg:';
+      parts.push(
+        `<button type="button" class="diag-pill ${isAct ? 'active' : ''}" data-src-filter="tg:" title="点击仅看 Telegram 频道结果">TG(${tg.activeChannels}/${tg.totalChannels}): <b>${tg.count}</b></button>`
+      );
     }
     if (state.meta?.pluginStats) {
       for (const [pid, st] of Object.entries(state.meta.pluginStats)) {
+        const srcKey = `plugin:${pid}`;
+        const isAct = state.exactSourceFilter === srcKey;
         const label = st.circuitOpen ? `${pid}[熔断]` : pid;
-        parts.push(`<span class="${st.ok ? '' : 'tele-bad'}">${escapeHtml(label)}: <b>${st.count}</b></span>`);
+        parts.push(
+          `<button type="button" class="diag-pill ${isAct ? 'active' : ''} ${st.ok ? '' : 'tele-bad'}" data-src-filter="${escapeHtml(srcKey)}" title="点击仅看 ${escapeHtml(pid)} 结果">${escapeHtml(label)}: <b>${st.count}</b></button>`
+        );
       }
     }
-    $('sourceDiagBar').innerHTML = parts.join('');
+    const diagEl = $('sourceDiagBar');
+    diagEl.innerHTML = parts.join('');
+    diagEl.querySelectorAll('.diag-pill[data-src-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.srcFilter;
+        state.exactSourceFilter = state.exactSourceFilter === target ? '' : target;
+        state.page = 1;
+        renderAll();
+      });
+    });
   }
 
   function aliveCellHtml(url) {
@@ -687,8 +809,8 @@
   function realFileHtml(url) {
     const info = state.linkStates.get(url);
     if (!info || !info.shareTitle) return '';
-    const sizeText = info.fileSize ? ` (${info.fileSize})` : '';
-    return `<span class="real-file-tag" title="网盘官方接口实测内含文件：${escapeHtml(info.shareTitle + sizeText)}">实测：${escapeHtml(info.shareTitle)}${escapeHtml(sizeText)}</span>`;
+    const sizeText = info.fileSize ? ` · ${info.fileSize}` : '';
+    return `<div class="real-file-banner" title="网盘官方接口实测内含文件：${escapeHtml(info.shareTitle + sizeText)}"><span>✓ 实测内含：${escapeHtml(info.shareTitle)}${escapeHtml(sizeText)}</span></div>`;
   }
 
   function renderRow(item) {
@@ -706,7 +828,7 @@
 
     const siblingsHtml = siblings.length
       ? `<div class="sibling-drives">
-          <span class="sib-label">同源备选：</span>
+          <span class="sib-label">同源多盘直达：</span>
           ${siblings
             .map(sib => {
               const sm = DRIVE_META[sib.type] || DRIVE_META.others;
@@ -718,8 +840,11 @@
 
     return `
       <article class="row-item ${isDead ? 'is-dead' : ''}" data-card-url="${escapeHtml(item.url)}">
-        <div>
+        <div class="cell-left">
           <span class="drive-tag" data-drive="${escapeHtml(item.type)}">${escapeHtml(m.label)}</span>
+          <div data-status-cell="${escapeHtml(item.url)}">
+            ${aliveCellHtml(item.url)}
+          </div>
         </div>
         <div class="cell-main">
           <div class="title-row">
@@ -728,12 +853,12 @@
             </a>
             ${specsHtml}
           </div>
+          <div data-realfile-cell="${escapeHtml(item.url)}">${realFileHtml(item.url)}</div>
           ${item.content ? `<div class="item-sub">${highlightKeyword(item.content, state.kw)}</div>` : ''}
           ${siblingsHtml}
           <div class="item-meta-line">
-            <span>来源：${escapeHtml(item.source || '聚合源')}</span>
-            ${dt ? `<span>· ${escapeHtml(dt)}</span>` : ''}
-            <span data-realfile-cell="${escapeHtml(item.url)}">${realFileHtml(item.url)}</span>
+            <button type="button" class="source-filter-chip js-src-chip" data-src="${escapeHtml(item.source || '')}" title="点击筛选该来源">来源：${escapeHtml(item.source || '聚合源')}</button>
+            ${dt ? `<span>· 发布于 ${escapeHtml(dt)}</span>` : ''}
           </div>
         </div>
         <div class="cell-right">
@@ -742,9 +867,6 @@
               ? `<button type="button" class="pwd-btn js-copy-pwd" data-pwd="${escapeHtml(item.password)}" title="点击复制提取码">码 · ${escapeHtml(item.password)}</button>`
               : ''
           }
-          <div data-status-cell="${escapeHtml(item.url)}">
-            ${aliveCellHtml(item.url)}
-          </div>
           <button type="button" class="act-btn fav ${saved ? 'saved' : ''} js-fav-btn" data-url="${escapeHtml(item.url)}" title="收入私藏书签">${saved ? '★' : '☆'}</button>
           <button type="button" class="act-btn js-qr-btn" data-url="${escapeHtml(item.url)}" data-title="${escapeHtml(item.title)}" data-drive="${escapeHtml(m.label)}" data-pwd="${escapeHtml(item.password || '')}" title="手机扫码直达">扫码</button>
           <button type="button" class="act-btn js-copy-link" data-url="${escapeHtml(item.url)}" data-pwd="${escapeHtml(item.password || '')}">复制</button>
@@ -762,12 +884,12 @@
           .map(
             () => `
           <div class="skeleton-row">
-            <div class="skel-bar" style="width:54px;height:24px"></div>
+            <div class="skel-bar" style="width:64px;height:28px"></div>
             <div style="display:flex;flex-direction:column;gap:8px">
               <div class="skel-bar" style="width:65%"></div>
               <div class="skel-bar" style="width:40%;height:11px"></div>
             </div>
-            <div class="skel-bar" style="width:140px;height:28px"></div>
+            <div class="skel-bar" style="width:140px;height:30px"></div>
           </div>
         `
           )
@@ -894,6 +1016,16 @@
       });
     });
 
+    scope.querySelectorAll('.js-src-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const src = btn.dataset.src || '';
+        if (!src) return;
+        state.exactSourceFilter = state.exactSourceFilter === src ? '' : src;
+        state.page = 1;
+        renderAll();
+      });
+    });
+
     scope.querySelectorAll('.js-fav-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const url = btn.dataset.url;
@@ -915,6 +1047,31 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
+  }
+
+  async function batchCopyPageValidLinks() {
+    const driveList = getDriveFilteredItems(getFilteredItems());
+    const start = (state.page - 1) * state.perPage;
+    const pageItems = driveList.slice(start, start + state.perPage);
+    const validItems = pageItems.filter(it => {
+      const st = state.linkStates.get(it.url)?.state;
+      return st !== 'invalid';
+    });
+
+    if (!validItems.length) {
+      showToast('当前页暂无可复制的有效链接');
+      return;
+    }
+
+    const lines = validItems.map((it, idx) => {
+      const m = DRIVE_META[it.type] || DRIVE_META.others;
+      const pwdPart = it.password ? ` 提取码: ${it.password}` : '';
+      return `${idx + 1}. 【${m.label}】${it.title}\n${it.url}${pwdPart}`;
+    });
+
+    if (await copyToClipboard(lines.join('\n\n'))) {
+      showToast(`已批量复制本页 ${validItems.length} 条有效资源链接`);
+    }
   }
 
   async function triggerPageLinkCheck(pageItems) {
@@ -1039,6 +1196,7 @@
     state.page = 1;
     if (!forceRefresh) {
       state.activeDrive = 'all';
+      state.exactSourceFilter = '';
       state.specFilter = '';
       state.subFilter = '';
       $('subFilterInput').value = '';
@@ -1072,7 +1230,7 @@
       doSearch._renderTimer = setTimeout(() => {
         doSearch._renderTimer = null;
         renderAll();
-      }, 120);
+      }, 110);
     };
 
     es.addEventListener('batch', (ev) => {
@@ -1136,6 +1294,7 @@
         state.availablePlugins = json.data.availablePlugins || [];
         state.pluginHealth = json.data.health || {};
         state.tgHealth = json.data.tgHealth || { channels: [], deadCandidates: [] };
+        state.runtimeStats = json.data.runtime || null;
         if (Array.isArray(state.serverConfig.hotWords)) {
           state.hotWords = state.serverConfig.hotWords;
           renderQuickTags();
@@ -1144,10 +1303,42 @@
         const plCnt = Array.isArray(state.serverConfig.enabledPlugins) ? state.serverConfig.enabledPlugins.length : 0;
         const metaEl = $('headerMetaInfo');
         if (metaEl) {
-          metaEl.textContent = `${chCnt} 个 TG 频道 · ${plCnt} 个直连插件运行中`;
+          metaEl.textContent = `${chCnt} 个 TG 频道 · ${plCnt} 个插件守护运行中`;
         }
       }
     } catch {}
+  }
+
+  function renderRuntimeShield() {
+    const rt = state.runtimeStats;
+    const uptimeEl = $('runtimeUptimeText');
+    const gridEl = $('runtimeMetricsGrid');
+    if (!rt || !uptimeEl || !gridEl) return;
+
+    uptimeEl.textContent = `已无间断运行：${formatUptime(rt.uptimeSec)} · ${rt.platform || ''}`;
+
+    const searchHits = (rt.searchCache?.cacheHits || 0) + (rt.searchCache?.coalescedHits || 0);
+    const checkHits = rt.checker?.cacheHits || 0;
+    const posterHits = rt.posterCache?.hits || 0;
+
+    gridEl.innerHTML = `
+      <div class="shield-metric-box">
+        <span class="shield-metric-label">进程内存 (RSS / 堆)</span>
+        <span class="shield-metric-val">${rt.memory?.rssMB || 0} / ${rt.memory?.heapUsedMB || 0} MB</span>
+      </div>
+      <div class="shield-metric-box">
+        <span class="shield-metric-label">检索缓存 / 合并防击穿</span>
+        <span class="shield-metric-val">${rt.searchCache?.entries || 0} 组 · 命中 ${searchHits} 次</span>
+      </div>
+      <div class="shield-metric-box">
+        <span class="shield-metric-label">死链实测缓存池</span>
+        <span class="shield-metric-val">${rt.checker?.cacheEntries || 0} 条 · 命中 ${checkHits} 次</span>
+      </div>
+      <div class="shield-metric-box">
+        <span class="shield-metric-label">海报缓存 / 分域节流</span>
+        <span class="shield-metric-val">${rt.posterCache?.entries || 0} 张(命中${posterHits}) · 节流 ${rt.http?.totalThrottledWaits || 0} 次</span>
+      </div>
+    `;
   }
 
   function renderPluginCells() {
@@ -1161,7 +1352,7 @@
           if (h.state === 'OPEN') {
             healthTag = `<span class="plugin-meta-tag open">已熔断 · 冷却 ${h.cooldownRemainingSec || 0}s</span>`;
           } else if (h.okCount > 0) {
-            healthTag = `<span class="plugin-meta-tag ok">正常 · 均耗 ${h.avgLatencyMs}ms</span>`;
+            healthTag = `<span class="plugin-meta-tag ok">正常 · 均耗 ${h.avgLatencyMs}ms (成功${h.okCount})</span>`;
           } else if (h.failCount > 0) {
             healthTag = `<span class="plugin-meta-tag open">异常 ${h.consecutiveFailures}/3</span>`;
           }
@@ -1196,9 +1387,10 @@
     if (hintEl) {
       hintEl.textContent = deadList.length
         ? `检测到 ${deadList.length} 个失效或无公开预览频道：${deadList.join(', ')}（可点击右上角一键剔除）`
-        : '所有已测 Telegram 频道状态正常';
+        : '所有已测 Telegram 频道状态正常（引擎已自动按历史命中率排优抓取）';
     }
 
+    renderRuntimeShield();
     renderPluginCells();
     modal.hidden = false;
   }
@@ -1307,8 +1499,17 @@
     if ($('backToWallBtn')) {
       $('backToWallBtn').addEventListener('click', backToWall);
     }
+    if ($('batchCopyValidBtn')) {
+      $('batchCopyValidBtn').addEventListener('click', batchCopyPageValidLinks);
+    }
     if ($('loadMorePostersBtn')) {
       $('loadMorePostersBtn').addEventListener('click', () => loadWallPage(false));
+    }
+    if ($('wallFilterInput')) {
+      $('wallFilterInput').addEventListener('input', (e) => {
+        state.wallFilterKw = e.target.value;
+        applyWallFilter();
+      });
     }
 
     document.querySelectorAll('#wallSortTabs .sort-pill').forEach(btn => {
@@ -1338,6 +1539,7 @@
 
     $('sourceFilterSelect').addEventListener('change', e => {
       state.sourceFilter = e.target.value;
+      state.exactSourceFilter = '';
       state.page = 1;
       renderAll();
     });
@@ -1374,11 +1576,14 @@
     $('resetBreakersBtn').addEventListener('click', async () => {
       await fetch('/api/breaker/reset', { method: 'POST' });
       await loadServerConfig();
+      renderRuntimeShield();
       renderPluginCells();
       showToast('已重置所有插件熔断器');
     });
     $('clearServerCacheBtn').addEventListener('click', async () => {
       await fetch('/api/cache/clear', { method: 'POST' });
+      await loadServerConfig();
+      renderRuntimeShield();
       showToast('已清空搜索缓存');
     });
 
@@ -1396,6 +1601,20 @@
         if (e.target === $(id)) $(id).hidden = true;
       });
     });
+
+    const backTopBtn = $('backToTopBtn');
+    if (backTopBtn) {
+      window.addEventListener(
+        'scroll',
+        () => {
+          backTopBtn.hidden = (window.scrollY || document.documentElement.scrollTop || 0) < 520;
+        },
+        { passive: true }
+      );
+      backTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    }
 
     document.addEventListener('keydown', e => {
       if (e.key === '/' && document.activeElement !== $('kwInput') && !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
