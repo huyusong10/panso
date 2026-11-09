@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>盘松 · PANSONG</title>
+  <!-- 盘松 东方极简「圆盘苍松 + 朱砂印」Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><rect width='36' height='36' rx='8' fill='%23214E3F'/><circle cx='18' cy='18' r='12.5' fill='none' stroke='%23F6F4EE' stroke-opacity='0.28' stroke-width='1.2'/><path d='M18 7.5L11.5 15h4l-5 6.5h15l-5-6.5h4L18 7.5z' fill='%23F6F4EE'/><rect x='16.6' y='21.5' width='2.8' height='5' rx='0.8' fill='%23F6F4EE'/><rect x='23.5' y='22.5' width='4.2' height='4.2' rx='1' fill='%23C43B2B'/></svg>" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('pansong_theme');
+        var dark = t ? t === 'dark' : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="page-canvas" id="pageCanvas">
+    <!-- 顶部栏：品牌 + 居中搜索匣 + 功能键 -->
+    <header class="top-bar">
+      <div class="brand-lockup" id="brandHome" title="返回盘松海报墙">
+        <svg class="brand-seal" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect width="36" height="36" rx="8" fill="var(--pine)" />
+          <circle cx="18" cy="18" r="12.5" fill="none" stroke="var(--surface)" stroke-opacity="0.26" stroke-width="1.2" />
+          <path d="M18 7.5L11.5 15h4l-5 6.5h15l-5-6.5h4L18 7.5z" fill="var(--surface)" />
+          <rect x="16.6" y="21.5" width="2.8" height="5" rx="0.8" fill="var(--surface)" />
+          <rect x="23.5" y="22.5" width="4.2" height="4.2" rx="1" fill="var(--cinnabar)" />
+        </svg>
+        <div class="brand-titles">
+          <div class="brand-name-row">
+            <span class="brand-cn">盘松</span>
+            <span class="brand-stamp">私藏</span>
+          </div>
+          <span class="brand-sub" id="headerMetaInfo">PANSONG · 多网盘聚合检索</span>
+        </div>
+      </div>
+
+      <!-- 搜索匣（内嵌顶栏，随时可搜） -->
+      <div class="header-search-wrap">
+        <form class="search-box" id="searchForm" autocomplete="off">
+          <div class="search-icon" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+          </div>
+          <input
+            id="kwInput"
+            class="search-input"
+            type="search"
+            placeholder="输入剧名、电影、番剧或书名（按 / 键聚焦）…"
+            aria-label="检索词"
+          />
+          <button type="button" class="search-clear" id="clearInputBtn" title="清空">清空</button>
+          <button type="submit" class="search-submit" id="searchSubmitBtn">检索</button>
+        </form>
+        <div class="quick-tags" id="quickTagsRow"></div>
+      </div>
+
+      <nav class="top-actions">
+        <button type="button" class="ink-pill" id="openFavBtn">
+          <span>书签</span>
+          <span class="pill-badge" id="favCountBadge">0</span>
+        </button>
+        <button type="button" class="ink-pill" id="openSettingsBtn">
+          <span>设置</span>
+        </button>
+        <button type="button" class="ink-pill" id="themeToggleBtn" title="切换宣纸/松烟模式">
+          <span id="themeText">宣纸</span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- 主视图 A：无限流影视海报墙（默认主页面） -->
+    <section class="poster-wall-stage" id="posterWallStage">
+      <div class="wall-toolbar">
+        <div class="wall-channels" id="wallChannelTabs"></div>
+        <div class="wall-sorts" id="wallSortTabs">
+          <button type="button" class="sort-pill active" data-sort="recommend">按热度</button>
+          <button type="button" class="sort-pill" data-sort="time">按最新</button>
+          <button type="button" class="sort-pill" data-sort="rank">按高分</button>
+        </div>
+      </div>
+
+      <div class="poster-grid" id="posterGrid"></div>
+
+      <div class="wall-sentinel" id="wallSentinel">
+        <button type="button" class="ghost-btn" id="loadMorePostersBtn">向下滚动或点击加载更多佳作…</button>
+      </div>
+    </section>
+
+    <!-- 主视图 B：网盘检索结果视图（点击海报或搜索时切换，支持一键返回原海报墙位置） -->
+    <section class="search-results-stage" id="searchResultsStage" hidden>
+      <!-- 返回海报墙导航条 -->
+      <div class="back-wall-bar">
+        <button type="button" class="back-wall-btn" id="backToWallBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span>返回海报墙（保留浏览位置）</span>
+        </button>
+        <div class="current-query-title" id="currentQueryBanner"></div>
+      </div>
+
+      <!-- 筛选与控制栏 -->
+      <div class="filter-bar" id="matrixBar" hidden>
+        <div class="drive-tabs" id="driveFilters"></div>
+        <div class="filter-controls">
+          <div class="spec-chips" id="specQuickChips">
+            <button type="button" class="spec-chip" data-spec="4K">4K</button>
+            <button type="button" class="spec-chip" data-spec="杜比">杜比/HDR</button>
+            <button type="button" class="spec-chip" data-spec="全集">全集</button>
+          </div>
+          <input type="search" class="ctrl-input" id="subFilterInput" placeholder="二次筛选…" />
+          <select class="ctrl-select" id="sourceFilterSelect" aria-label="来源过滤">
+            <option value="all">全部来源</option>
+            <option value="tg">Telegram 频道</option>
+            <option value="plugin">直连插件源</option>
+          </select>
+          <select class="ctrl-select" id="sortSelect" aria-label="排序方式">
+            <option value="score">按相关度</option>
+            <option value="date">按最新时间</option>
+            <option value="alive">有效优先</option>
+          </select>
+          <label class="ctrl-check" title="将同一帖子或同名剧集下的多个网盘折叠为一行">
+            <input type="checkbox" id="foldMultiDriveCheckbox" checked />
+            <span>合并多盘</span>
+          </label>
+          <label class="ctrl-check">
+            <input type="checkbox" id="hideDeadCheckbox" />
+            <span>隐藏失效</span>
+          </label>
+          <button type="button" class="ctrl-btn" id="forceRefreshBtn" title="忽略缓存重新抓取">刷新</button>
+        </div>
+      </div>
+
+      <!-- 遥测与源状态细栏 -->
+      <div class="telemetry-strip" id="telemetryBar" hidden>
+        <div class="tele-left" id="toolbarStats"></div>
+        <div class="tele-right" id="sourceDiagBar"></div>
+      </div>
+
+      <!-- 结果主列表（温润宣纸笺） -->
+      <main class="results-paper" id="resultsMount"></main>
+    </section>
+  </div>
+
+  <!-- 手机扫码直达弹窗 -->
+  <div class="modal-mask" id="qrModal" hidden>
+    <div class="modal-card qr-card">
+      <div class="modal-header">
+        <div class="modal-title">手机扫码直达</div>
+        <button type="button" class="modal-close" id="closeQrBtn">关闭</button>
+      </div>
+      <div class="qr-body">
+        <div class="qr-svg-wrap" id="qrSvgMount"></div>
+        <div class="qr-title" id="qrItemTitle"></div>
+        <div class="qr-meta" id="qrItemMeta"></div>
+        <div class="qr-hint">使用手机相机或对应网盘 App 扫码即可直接转存</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div class="modal-mask" id="settingsModal" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">数据源与引擎设置</div>
+        <button type="button" class="modal-close" id="closeSettingsBtn">关闭</button>
+      </div>
+      <div class="modal-body">
+        <div class="field-group">
+          <div class="field-label-row">
+            <span>本地代理地址（用于直连 Telegram 频道）</span>
+            <button type="button" class="ghost-btn" id="probeProxyBtn">自动探测端口并测速</button>
+          </div>
+          <input type="text" class="paper-input" id="cfgProxyInput" placeholder="留空则直连，例如 http://127.0.0.1:7890" />
+          <div class="field-hint" id="proxyProbeStatus">状态：待检测</div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label-row"><span>检索策略</span></div>
+          <div class="check-row">
+            <label class="check-item">
+              <input type="checkbox" id="cfgEnableTg" checked />
+              <span>启用 Telegram 频道并发抓取</span>
+            </label>
+            <label class="check-item">
+              <input type="checkbox" id="cfgHideOwn" checked />
+              <span>净网过滤（自动剔除推广链接）</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label-row">
+            <span>直连插件源与熔断器状态</span>
+            <button type="button" class="ghost-btn" id="resetBreakersBtn">重置熔断器</button>
+          </div>
+          <div class="plugin-grid" id="cfgPluginsGrid"></div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-label-row">
+            <span>Telegram 频道列表 <small class="field-hint" id="cfgChannelCountHint"></small></span>
+            <button type="button" class="ghost-btn" id="pruneDeadChannelsBtn" title="自动移除已失效或多次零命中的频道">一键剔除失效频道</button>
+          </div>
+          <textarea class="paper-textarea" id="cfgChannelsTextarea" rows="4"></textarea>
+          <div class="field-hint" id="tgChannelHealthHint">搜索后将自动记录各频道命中率与存活状态</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="ghost-btn" id="clearServerCacheBtn">清空搜索缓存</button>
+        <button type="button" class="pine-btn" id="saveSettingsBtn">保存并应用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 书签弹窗 -->
+  <div class="modal-mask" id="favModal" hidden>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">私藏书签</div>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="ghost-btn" id="clearAllFavBtn">清空全部</button>
+          <button type="button" class="modal-close" id="closeFavBtn">关闭</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:0" id="favListMount"></div>
+    </div>
+  </div>
+
+  <div class="ink-toast" id="toast"></div>
+  <script src="/qrcode.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
