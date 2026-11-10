@@ -1,0 +1,207 @@
+<style>
+  .ps-card {
+    background: #fcfbf8;
+    border: 1px solid rgba(33, 78, 63, 0.18);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  }
+  .ps-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(33, 78, 63, 0.10);
+  }
+  .ps-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ps-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #191f1d;
+  }
+  .ps-sub {
+    font-size: 12px;
+    color: #66706a;
+    margin-top: 2px;
+  }
+  .ps-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .ps-badge.ok {
+    background: rgba(29, 120, 82, 0.12);
+    color: #1d7852;
+  }
+  .ps-badge.stop {
+    background: rgba(185, 56, 44, 0.12);
+    color: #b9382c;
+  }
+  .ps-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .ps-btn {
+    padding: 6px 14px !important;
+    border-radius: 7px !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
+    cursor: pointer;
+    border: 1px solid rgba(33, 78, 63, 0.25) !important;
+    background: #fff !important;
+    color: #214e3f !important;
+    text-decoration: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .ps-btn.primary {
+    background: #214e3f !important;
+    border-color: #214e3f !important;
+    color: #fcfbf8 !important;
+  }
+  .ps-btn:hover {
+    opacity: 0.9;
+  }
+  .ps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .ps-stat-box {
+    background: #f6f4ee;
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid rgba(33, 78, 63, 0.08);
+  }
+  .ps-stat-label {
+    font-size: 11.5px;
+    color: #66706a;
+  }
+  .ps-stat-val {
+    font-size: 14px;
+    font-weight: 700;
+    color: #191f1d;
+    margin-top: 3px;
+    font-family: monospace;
+  }
+</style>
+
+<div class="ps-card">
+  <div class="ps-top">
+    <div class="ps-brand">
+      <svg width="38" height="38" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+        <rect width="36" height="36" rx="8" fill="#214E3F"/>
+        <circle cx="18" cy="18" r="12.5" fill="none" stroke="#F6F4EE" stroke-opacity="0.28" stroke-width="1.2"/>
+        <path d="M18 7.5L11.5 15h4l-5 6.5h15l-5-6.5h4L18 7.5z" fill="#F6F4EE"/>
+        <rect x="16.6" y="21.5" width="2.8" height="5" rx="0.8" fill="#F6F4EE"/>
+        <rect x="23.5" y="22.5" width="4.2" height="4.2" rx="1" fill="#C43B2B"/>
+      </svg>
+      <div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="ps-title">盘松 · PANSONG</span>
+          <span id="ps_status_badge" class="ps-badge">正在检测状态...</span>
+        </div>
+        <div class="ps-sub" id="ps_sub_info">路由器网关级 7×24 影视海报墙与多网盘聚合检索引擎</div>
+      </div>
+    </div>
+
+    <div class="ps-actions">
+      <a id="ps_open_web_btn" class="ps-btn primary" href="#" target="_blank" rel="noopener noreferrer">
+        打开盘松海报墙 (新窗口) ↗
+      </a>
+      <button type="button" class="ps-btn" onclick="psControl('restart')">重启服务</button>
+      <button type="button" class="ps-btn" onclick="psControl('clear_cache')">清空缓存</button>
+      <button type="button" class="ps-btn" onclick="psControl('reset_breaker')">重置熔断器</button>
+    </div>
+  </div>
+
+  <div class="ps-grid" id="ps_metrics_grid">
+    <div class="ps-stat-box">
+      <div class="ps-stat-label">连续无间断运行</div>
+      <div class="ps-stat-val" id="ps_m_uptime">--</div>
+    </div>
+    <div class="ps-stat-box">
+      <div class="ps-stat-label">进程内存 (RSS / 堆)</div>
+      <div class="ps-stat-val" id="ps_m_mem">--</div>
+    </div>
+    <div class="ps-stat-box">
+      <div class="ps-stat-label">搜索缓存 / 防击穿合并</div>
+      <div class="ps-stat-val" id="ps_m_search">--</div>
+    </div>
+    <div class="ps-stat-box">
+      <div class="ps-stat-label">海报缓存 / 分域防封节流</div>
+      <div class="ps-stat-val" id="ps_m_http">--</div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+  function fmtDuration(sec) {
+    var s = Math.max(0, Number(sec) || 0);
+    var d = Math.floor(s / 86400);
+    var h = Math.floor((s % 86400) / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var r = s % 60;
+    if (d > 0) return d + "天 " + h + "小时 " + m + "分";
+    if (h > 0) return h + "小时 " + m + "分 " + r + "秒";
+    if (m > 0) return m + "分 " + r + "秒";
+    return r + "秒";
+  }
+
+  function psControl(cmd) {
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "pansong", "action")%>', { cmd: cmd }, function() {
+      setTimeout(refreshPsStatus, 800);
+    });
+  }
+
+  function refreshPsStatus() {
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "pansong", "status")%>', null, function(x, data) {
+      if (!data) return;
+      var port = data.port || 3200;
+      var webUrl = window.location.protocol + "//" + window.location.hostname + ":" + port;
+      var openBtn = document.getElementById("ps_open_web_btn");
+      if (openBtn) openBtn.href = webUrl;
+
+      var badge = document.getElementById("ps_status_badge");
+      if (data.running) {
+        badge.className = "ps-badge ok";
+        badge.innerHTML = "● 运行中 (端口 " + port + ")";
+      } else {
+        badge.className = "ps-badge stop";
+        badge.innerHTML = "○ 未运行";
+      }
+
+      if (data.health_raw) {
+        try {
+          var h = JSON.parse(data.health_raw).data || {};
+          document.getElementById("ps_m_uptime").innerText = fmtDuration(h.uptimeSec);
+          document.getElementById("ps_m_mem").innerText = (h.memory?.rssMB || 0) + " / " + (h.memory?.heapUsedMB || 0) + " MB";
+          var hits = (h.searchCache?.cacheHits || 0) + (h.searchCache?.coalescedHits || 0);
+          document.getElementById("ps_m_search").innerText = (h.searchCache?.entries || 0) + " 组 (命中 " + hits + " 次)";
+          document.getElementById("ps_m_http").innerText = (h.posterCache?.entries || 0) + " 张 / 节流 " + (h.http?.totalThrottledWaits || 0) + " 次";
+          document.getElementById("ps_sub_info").innerText = "运行平台: " + (h.platform || "OpenWrt") + " · 访问地址: " + webUrl;
+        } catch (e) {}
+      }
+    });
+  }
+
+  refreshPsStatus();
+  XHR.poll(5, '<%=luci.dispatcher.build_url("admin", "services", "pansong", "status")%>', null, function(x, data) {
+    if (data) refreshPsStatus();
+  });
+</script>

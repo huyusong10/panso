@@ -1,0 +1,11 @@
+{
+	"luci-app-pansong": {
+		"description": "Grant access to PanSong LuCI application",
+		"read": {
+			"uci": [ "pansong" ]
+		},
+		"write": {
+			"uci": [ "pansong" ]
+		}
+	}
+}

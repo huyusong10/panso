@@ -1,0 +1,68 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG="/usr/bin/node"
+APP_DIR="/usr/share/pansong"
+LOG_FILE="/tmp/pansong.log"
+
+sync_uci_to_json() {
+	local port proxy enable_tg hide_own cache_ttl
+	config_load pansong
+	config_get port main port "3200"
+	config_get proxy main proxy ""
+	config_get_bool enable_tg main enable_tg 1
+	config_get_bool hide_own main hide_own 1
+	config_get cache_ttl main cache_ttl "30"
+
+	mkdir -p "$APP_DIR/data"
+	PORT="$port" PROXY="$proxy" ENABLE_TG="$enable_tg" HIDE_OWN="$hide_own" CACHE_TTL="$cache_ttl" APP_DIR="$APP_DIR" \
+	"$PROG" --input-type=commonjs -e '
+const fs = require("fs");
+const path = require("path");
+const cfgFile = path.join(process.env.APP_DIR, "data", "config.json");
+let cur = {};
+try { cur = JSON.parse(fs.readFileSync(cfgFile, "utf-8")); } catch {}
+cur.port = Number(process.env.PORT) || 3200;
+cur.host = "0.0.0.0";
+if (process.env.PROXY !== undefined) cur.proxy = process.env.PROXY;
+cur.enableTelegram = process.env.ENABLE_TG === "1";
+cur.hideAdsAndOwn = process.env.HIDE_OWN === "1";
+cur.cacheTtlMinutes = Number(process.env.CACHE_TTL) || 30;
+fs.writeFileSync(cfgFile, JSON.stringify(cur, null, 2));
+' 2>/dev/null || true
+}
+
+start_service() {
+	config_load pansong
+	local enabled port
+	config_get_bool enabled main enabled 0
+	config_get port main port "3200"
+	[ "$enabled" -eq 1 ] || return 0
+
+	if [ ! -x "$PROG" ]; then
+		PROG="$(command -v node)"
+	fi
+
+	sync_uci_to_json
+
+	procd_open_instance pansong
+	procd_set_param command "$PROG" --max-old-space-size=256 "$APP_DIR/src/server.js"
+	procd_set_param env PORT="$port" HOST="0.0.0.0" NODE_ENV="production"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_set_param pidfile /var/run/pansong.pid
+	procd_close_instance
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger "pansong"
+}

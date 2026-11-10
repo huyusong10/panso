@@ -1,0 +1,8 @@
+config pansong 'main'
+	option enabled '1'
+	option port '3200'
+	option proxy ''
+	option enable_tg '1'
+	option hide_own '1'
+	option cache_ttl '30'
+	option app_dir '/usr/share/pansong'

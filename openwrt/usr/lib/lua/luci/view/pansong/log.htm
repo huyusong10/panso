@@ -1,0 +1,27 @@
+<%+header%>
+<div class="cbi-map">
+  <h2 name="content"><%:盘松 · 运行日志%></h2>
+  <div style="margin-bottom:10px;">
+    <button type="button" class="cbi-button cbi-button-apply" onclick="loadPsLog()"><%:刷新日志%></button>
+  </div>
+  <textarea id="ps_log_area" readonly="readonly" wrap="off" rows="26" style="width:100%;font-family:monospace;font-size:12.5px;padding:12px;background:#141917;color:#eae7df;border-radius:8px;border:1px solid rgba(33,78,63,0.25);"></textarea>
+</div>
+<script type="text/javascript">
+  function loadPsLog() {
+    XHR.get('<%=luci.dispatcher.build_url("admin", "services", "pansong", "getlog")%>', null, function(x) {
+      var el = document.getElementById("ps_log_area");
+      if (el && x) {
+        el.value = x.responseText || "";
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }
+  loadPsLog();
+  XHR.poll(5, '<%=luci.dispatcher.build_url("admin", "services", "pansong", "getlog")%>', null, function(x) {
+    var el = document.getElementById("ps_log_area");
+    if (el && x) {
+      el.value = x.responseText || "";
+    }
+  });
+</script>
+<%+footer%>
