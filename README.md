@@ -47,6 +47,20 @@ npm run daemon
 
 启动后浏览器访问：**`http://localhost:3200`**（局域网内其他设备可直接访问终端输出的 `Network` IP 地址）。
 
+### Docker / NAS 部署（原生适配 Unraid / 群晖 / 飞牛 fnOS）
+```bash
+# 方式一：本地 Docker Compose 一键启动
+docker compose up -d --build
+
+# 方式二：远程一键打包部署至局域网 NAS（自动适配国内网络，若为 Unraid 自动注册 Dockerman 模板、图标与自启）
+./deploy-docker.sh <NAS_IP> root '<SSH_PASSWORD>' 3200
+```
+
+### OpenWrt 软路由部署 (`luci-app-pansong`)
+```bash
+./openwrt/deploy-openwrt.sh <ROUTER_IP> root '<SSH_PASSWORD>'
+```
+
 ## ⚙️ 配置文件与运行监控
 
 - 所有配置首次启动时自动通过原子写入（Write-Ahead Rename）持久化在 `data/config.json`。

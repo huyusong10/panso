@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '..');
-export const DATA_DIR = path.join(ROOT_DIR, 'data');
+export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT_DIR, 'data');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 
 export function writeJsonAtomic(filePath, obj) {
@@ -94,7 +94,9 @@ export const DEFAULT_CONFIG = {
   port: Number(process.env.PORT) || 3200,
   host: process.env.HOST || '0.0.0.0',
   proxy: process.env.PROXY || process.env.HTTPS_PROXY || process.env.HTTP_PROXY || '',
-  enableTelegram: true,
+  enableTelegram: process.env.ENABLE_TELEGRAM !== undefined
+    ? !['0', 'false', 'no'].includes(String(process.env.ENABLE_TELEGRAM).toLowerCase())
+    : true,
   tgConcurrency: 16,
   tgTimeoutMs: 4200,
   pluginTimeoutMs: 7500,
@@ -114,6 +116,9 @@ export function loadConfig() {
     currentConfig = {
       ...DEFAULT_CONFIG,
       ...parsed,
+      port: process.env.PORT ? Number(process.env.PORT) : (parsed.port || DEFAULT_CONFIG.port),
+      host: process.env.HOST ? process.env.HOST : (parsed.host || DEFAULT_CONFIG.host),
+      proxy: parsed.proxy || DEFAULT_CONFIG.proxy,
       channels: Array.isArray(parsed.channels) ? parsed.channels : DEFAULT_CONFIG.channels,
       enabledPlugins: savedPlugins
     };

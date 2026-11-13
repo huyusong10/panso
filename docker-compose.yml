@@ -1,0 +1,20 @@
+services:
+  pansong:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pansong:latest
+    container_name: PanSong
+    restart: unless-stopped
+    init: true
+    ports:
+      - "3200:3200"
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=3200
+      - HOST=0.0.0.0
+      - DATA_DIR=/app/data
+      # 若宿主机或旁路由提供 HTTP 代理可在此填写，留空也可在网页设置中随时修改
+      # - PROXY=http://192.168.31.1:7890
+    volumes:
+      - ./data:/app/data
